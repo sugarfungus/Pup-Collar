@@ -12,76 +12,108 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
-#define red 9                       // red led pin
-#define green 10                    // green led pin
-#define piezo 2                     // buzzer pin
+const int leds = 3;                 // led pin
+const int piezo = 2;                // buzzer pin
 
 RF24 radio(7, 8);                   // Nano CE & CSN pins
 
 const byte address[6] = "00001";    // radio channel
 
-boolean buttonState = 1;            // button state (1 = not pressed)
+int setting = 0;          // collar setting
+int currentSetting = 0;
 
 void setup() {
-  pinMode(piezo, OUTPUT);           // setup buzzer pin
-  pinMode(red, OUTPUT);             // setup red led pin
-  pinMode(green, OUTPUT);           // setup green led pin
-  digitalWrite(red, HIGH);          // turn off led (common anode)
-  digitalWrite(green, HIGH);        // turn off led (common anode)
-  
-  radio.begin();                    // turn on raio
+  pinMode(leds, OUTPUT);            // setup buzzer pin
+  pinMode(piezo, OUTPUT);           // setup red led pin
+
+  radio.begin();                    // turn on radio
   radio.openReadingPipe(0, address);// open channel
   radio.setPALevel(RF24_PA_MIN);    // set power to min
   radio.startListening();           // prepare to receive
 }
 
-void loop() {
-  if (radio.available()) {          // if signal present
-      radio.read(&buttonState, sizeof(buttonState));// read button
-      if (buttonState == LOW) {     // if button pressed
-          digitalWrite(red, LOW);   // turn on red led
-          analogWrite(green, 191);  // turn on green led
-          tone(2, 500, 1000);       // sound buzzer
-          delay(1000);              // wait one second 
-          digitalWrite(red, HIGH);  // turn off led
-          digitalWrite(green, HIGH);// turn off led
-      }
-  }
-  delay(10);                        // pause 1/100th second
-}
-
-void rg(int r, int g) {             // write red & green leds
-    analogWrite(red, 255 - r);      // write red led (common anode)
-    analogWrite(green, 255 - g);    // write green led (common anode)
-}
-
-// fades two colors of an rgb led from the initial value to the final value, using the specified number
-// of increments with the specified time interval, with a modifier to reduce the second color brightness
-void doubleFade(int color1, int color2, int modifier, int initialVal, int finalVal, int increments, int fadeTime) {
-    finalVal -= 255;                                            // correct for common anode
-    initialVal -= 255;                                          // correct for common anode
-    int incAmount = (finalVal - initialVal) / (increments - 1); // set size of increments
-    analogWrite(color1, initialVal);                            // write first led start value
-    analogWrite(color2, initialVal / modifier);                 // write second led start value using modifier
-    delay(fadeTime);                                            // wait for specified time
-    for (int i = 1; i < increments - 1; i++) {                  // for number of increments specified
-        analogWrite(color1, initialVal + (incAmount * i));      // write first led
-        analogWrite(color2, (initialVal + (incAmount * i)) / modifier); // write second led using modifier
-        delay(fadeTime);                                        // wait for specified time
+void loop() {   
+    if (currentSetting == 0) {
+        digitalWrite(leds, LOW);        // turn off leds
+        delay(1000);
     }
-    analogWrite(color1, finalVal);                              // write first led final value
-    analogWrite(color2, finalVal / mod);                        // write second led final value using modifier
-    delay(fadeTime);                                            // wait for specified time
+    if (currentSetting == 1) {
+        digitalWrite(leds, LOW);        // turn off leds
+        delay(1000);
+    }
+    if (currentSetting == 2) {   // if 
+        flash();                 // blink led
+        delay(2000);
+    }
+    if (currentSetting == 3) {   // if 
+        steady();                // led on high
+        delay(1000);
+    }
+    if (currentSetting == 4) {   // if 
+        quickFlash();
+        chirp();                // sound buzzer
+    }
+    else {
+        if (!radio.available()) {
+            quickFlash();
+            chirp();
+        }
+    }
+    delay(100);
+    checkSetting();
 }
 
-void blink() {                      // blink leds twice then fade
-    rg(255, 64);                    // write red and green to make amber
-    delay(100);                     // wait 1/10th second
-    rg(0, 0);                       // turn off leds
-    delay(100);                     // wait 1/10th second
-    doubleFade(red, green, 4, 255, 0, 40, 50); // write amber again then fade leds off
+void checkSetting(){                 // check check collar setting
+    if (radio.available()) {        // if signal present
+        radio.read(&setting, sizeof(setting));// read button
+        if (currentSetting != setting) {
+            currentSetting = setting;
+        }
+    }
 }
 
+void checkDelay(int ms) {           // delay while checking setting every 1/100th second
+    int checks = ms / 10;           // divide delay milliseconds by 10
+    for (int i = 0; i < checks; i++){ // for every 10 milliseconds
+            checkSetting();          // check if button pressed
+            delay(10);              // wait 10 milliseconds
+    }
+}
+
+void fade() {                       // smoothly dim led from 255 to 0
+    for (int i = 0; i < 52; i++) {  // in 52 steps
+        analogWrite(leds, 255 - (5 * i)); // starting at 255, dim led by 5 each time
+        delay(40);
+    }
+}
+
+void flash(){                       // blink leds twice then fade
+    digitalWrite(leds, HIGH);       // turn on leds
+    delay(100);
+    digitalWrite(leds, LOW);        // turn off leds
+    delay(100);
+    fade();                         // fade leds from 255 to 0
+}
+
+void quickFlash() {
+    digitalWrite(leds, HIGH);       // turn on leds
+    delay(100);
+    digitalWrite(leds, LOW);        // turn off leds
+    delay(100);
+    digitalWrite(leds, HIGH);       // turn on leds
+    delay(100);
+    digitalWrite(leds, LOW);        // turn off leds
+    delay(100);
+    digitalWrite(leds, HIGH);       // turn on leds
+    delay(100);
+    digitalWrite(leds, LOW);        // turn off leds
+    delay(100);
+}
+
+void steady() {
+    digitalWrite(leds, HIGH);       // turn on leds
+}
+   
 void chirp() {                      // sound buzzer three times quickly
     tone(piezo, 4000, 100);         // sound buzzer for 1/10th second
     delay(150);                     // wait
